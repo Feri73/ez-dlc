@@ -1,0 +1,10 @@
+# Ignore everything
+/*
+
+# But not these files...
+!README.md
+!.gitignore
+!main.py
+!utils.py
+!generate_configurations.py
+!.configuration_templates/
