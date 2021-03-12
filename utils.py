@@ -8,6 +8,7 @@ import cv2
 import deeplabcut
 import numpy as np
 from PIL import Image
+from tqdm import tqdm
 
 
 class Profiler:
@@ -59,7 +60,7 @@ def edit_video(src_vid_path: str, dst_vid_path: str, crop_offset: Tuple[int, int
         with VideoManager(
                 cv2.VideoWriter(dst_vid_path, cv2.VideoWriter_fourcc(*'FMP4'), fps, frame_size, frame_is_colored),
                 f'Cannot create {dst_vid_path}') as dst_vid:
-            for t in range(time_window[0] * orig_fps, time_window[1] * orig_fps, frame_step):
+            for t in tqdm(range(time_window[0] * orig_fps, time_window[1] * orig_fps, frame_step)):
                 src_vid.set(cv2.CAP_PROP_POS_FRAMES, t)
                 _, frame = src_vid.read()
                 frame = edit_frame(frame, crop_offset, crop_size, frame_size, frame_is_colored)

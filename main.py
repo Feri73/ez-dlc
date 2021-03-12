@@ -77,8 +77,8 @@ def task_label_frames(configs):
         vid_name = f'{vid}_{configs.marker_config.name}'
         video_path = f'{general_configs.videos_dir}/{vid_name}.avi'
         shutil.copy(f'{general_configs.videos_dir}/{vid}.avi', video_path)
-        create_dlc_project('tmp', '.tmp', [video_path], configs.marker_config.markers,
-                           prompt_delete=False)
+        create_dlc_project('tmp', '.tmp', [video_path], configs.marker_config.markers, prompt_delete=False,
+                           numframes2pick=configs.model_config.training_data_frame_count)
         cfg_path = os.path.abspath('.tmp/tmp/config.yaml')
         deeplabcut.extract_frames(cfg_path, mode='automatic', algo='kmeans', crop=False)
         deeplabcut.label_frames(cfg_path)
@@ -99,8 +99,7 @@ def task_create_dlc_model(configs):
 
     create_dlc_project(configs.model_config.name, general_configs.models_dir, ['.tmp/tmp.avi'],
                        configs.model_config.marker_config.markers, custom_config=set_video,
-                       default_net_type=configs.model_config.network_type,
-                       numframes2pick=configs.model_config.training_data_frame_count)
+                       default_net_type=configs.model_config.network_type)
     shutil.rmtree(f'{general_configs.models_dir}/{configs.model_config.name}/labeled-data/tmp')
 
     for d_name in configs.model_config.data:
@@ -165,9 +164,6 @@ def task_evaluate_realtime(configs):
         dst_vid_name = f'{general_configs.videos_dir}/{vid_name}_' \
                        f'{configs.realtime_config.model_config.name}_labeled.avi'
 
-        dlc_proc = Processor()
-        dlc_live = DLCLive(export_dir, processor=dlc_proc)
-
         with VideoManager(cv2.VideoCapture(src_vid_name), f'{src_vid_name} has problems.') as src_vid:
             orig_frame_size = (int(src_vid.get(cv2.CAP_PROP_FRAME_WIDTH)), int(src_vid.get(cv2.CAP_PROP_FRAME_HEIGHT)))
 
@@ -176,6 +172,12 @@ def task_evaluate_realtime(configs):
                 configs.realtime_config.model_config.frame_config.crop_size,
                 configs.realtime_config.model_config.frame_config.frame_size,
                 orig_frame_size)
+
+            dlc_proc = Processor()
+            dlc_live = DLCLive(export_dir, processor=dlc_proc,
+                               cropping=[crop_offset[0], crop_offset[0] + crop_size[0],
+                                         crop_offset[1], crop_offset[1] + crop_size[1]],
+                               resize=frame_size[0] / crop_size[0])
 
             with VideoManager(cv2.VideoWriter(dst_vid_name, cv2.VideoWriter_fourcc(*'FMP4'),
                                               int(src_vid.get(cv2.CAP_PROP_FPS)), orig_frame_size, True),
@@ -191,10 +193,7 @@ def task_evaluate_realtime(configs):
                                                      configs.realtime_config.model_config.frame_config.frame_is_colored)
                         poses = dlc_live.get_pose(processed_frame.astype(np.uint8))
                     else:
-                        poses = dlc_live.get_pose(frame.astype(np.uint8),
-                                                  cropping=[crop_offset[0], crop_offset[0] + crop_size[0],
-                                                            crop_offset[1], crop_offset[1] + crop_size[1]],
-                                                  resize=frame_size[0] / crop_size[0])
+                        poses = dlc_live.get_pose(frame.astype(np.uint8))
 
                     for pos, color in zip(poses, marker_colors):
                         prob = np.exp(pos[2] - 1)
@@ -204,7 +203,7 @@ def task_evaluate_realtime(configs):
 
                         bg_color = np.mean(frame[max(pos[1] - size, 0):pos[1] + size,
                                            max(pos[0] - size, 0):pos[0] + size].reshape(-1, frame.shape[-1]), axis=0)
-                        frame[max(pos[1] - size, 0):pos[1] + size, max(pos[0] - size, 0):pos[0] + size] =\
+                        frame[max(pos[1] - size, 0):pos[1] + size, max(pos[0] - size, 0):pos[0] + size] = \
                             color * prob + bg_color * (1 - prob)
 
                     dst_vid.write(frame.astype(np.uint8))
