@@ -1,5 +1,6 @@
 import glob
 import shutil
+import distutils.dir_util
 
 import cv2
 from PIL import Image
@@ -35,6 +36,38 @@ def get_export_dir(model_name):
     export_dir = glob.glob(os.path.abspath(f'{exports_dir}/*/'))[0]
 
     return export_dir
+
+
+def get_dlc_preds(export_dir, src_vid, crop_offset, crop_size, frame_size, frame_is_colored):
+    use_dlc_preprocess = abs(crop_size[0] / frame_size[0] * frame_size[1] - crop_size[1]) < 5
+
+    dlc_proc = Processor()
+    if use_dlc_preprocess:
+        dlc_live = DLCLive(export_dir, processor=dlc_proc,
+                           cropping=[crop_offset[0], crop_offset[0] + crop_size[0],
+                                     crop_offset[1], crop_offset[1] + crop_size[1]],
+                           resize=frame_size[0] / crop_size[0])
+    else:
+        dlc_live = DLCLive(export_dir, processor=dlc_proc)
+
+    dlc_live.init_inference(src_vid.read()[1])
+
+    for _ in tqdm(range(int(src_vid.get(cv2.CAP_PROP_FRAME_COUNT)))):
+        ok, frame = src_vid.read()
+        if not ok:
+            break
+
+        if use_dlc_preprocess:
+            poses = dlc_live.get_pose(frame.astype(np.uint8))
+        else:
+            processed_frame = edit_frame(frame, crop_offset, crop_size, frame_size, frame_is_colored)
+            poses = dlc_live.get_pose(processed_frame.astype(np.uint8))
+            poses[:, 0] = poses[:, 0] * crop_size[0] / frame_size[0] + crop_offset[0]
+            poses[:, 1] = poses[:, 1] * crop_size[1] / frame_size[1] + crop_offset[1]
+
+        yield frame, poses
+
+    dlc_live.close()
 
 
 def make_program():
@@ -78,12 +111,20 @@ def task_label_frames(configs):
         video_path = f'{general_configs.videos_dir}/{vid_name}.avi'
         shutil.copy(f'{general_configs.videos_dir}/{vid}.avi', video_path)
         create_dlc_project('tmp', '.tmp', [video_path], configs.marker_config.markers, prompt_delete=False,
-                           numframes2pick=configs.model_config.training_data_frame_count)
+                           numframes2pick=configs.training_data_frame_count)
         cfg_path = os.path.abspath('.tmp/tmp/config.yaml')
-        deeplabcut.extract_frames(cfg_path, mode='automatic', algo='kmeans', crop=False)
+
+        tmp_dir = os.path.abspath(f'.tmp/tmp/labeled-data/{vid_name}')
+        dst_dir = os.path.abspath(f'{general_configs.videos_dir}/labels/{vid_name}')
+
+        deeplabcut.extract_frames(cfg_path, mode=configs.mode, algo='kmeans', crop=False)
+
+        if os.path.isdir(dst_dir):
+            distutils.dir_util.copy_tree(dst_dir, tmp_dir)
+            shutil.rmtree(dst_dir)
         deeplabcut.label_frames(cfg_path)
-        shutil.move(f'.tmp/tmp/labeled-data/{vid_name}',
-                    f'{general_configs.videos_dir}/labels/{vid_name}')
+
+        shutil.move(tmp_dir, dst_dir)
         os.remove(video_path)
 
 
@@ -152,7 +193,7 @@ def task_evaluate_dlc(configs):
 
 
 @program_task(8, configurations.main.test_system)
-def task_evaluate_realtime(configs):
+def task_evaluate_accuracy(configs):
     export_dir = get_export_dir(configs.realtime_config.model_config.name)
 
     cmap = cm.get_cmap('plasma')
@@ -173,28 +214,12 @@ def task_evaluate_realtime(configs):
                 configs.realtime_config.model_config.frame_config.frame_size,
                 orig_frame_size)
 
-            dlc_proc = Processor()
-            dlc_live = DLCLive(export_dir, processor=dlc_proc,
-                               cropping=[crop_offset[0], crop_offset[0] + crop_size[0],
-                                         crop_offset[1], crop_offset[1] + crop_size[1]],
-                               resize=frame_size[0] / crop_size[0])
-
             with VideoManager(cv2.VideoWriter(dst_vid_name, cv2.VideoWriter_fourcc(*'FMP4'),
                                               int(src_vid.get(cv2.CAP_PROP_FPS)), orig_frame_size, True),
                               f'Cannot create {dst_vid_name}') as dst_vid:
-                dlc_live.init_inference(src_vid.read()[1])
-                for _ in tqdm(range(int(src_vid.get(cv2.CAP_PROP_FRAME_COUNT)))):
-                    ok, frame = src_vid.read()
-                    if not ok:
-                        break
 
-                    if abs(crop_size[0] / frame_size[0] * frame_size[1] - crop_size[1]) > 5:
-                        processed_frame = edit_frame(frame, crop_offset, crop_size, frame_size,
-                                                     configs.realtime_config.model_config.frame_config.frame_is_colored)
-                        poses = dlc_live.get_pose(processed_frame.astype(np.uint8))
-                    else:
-                        poses = dlc_live.get_pose(frame.astype(np.uint8))
-
+                for frame, poses in get_dlc_preds(export_dir, src_vid, crop_offset, crop_size, frame_size,
+                                                  configs.realtime_config.model_config.frame_config.frame_is_colored):
                     for pos, color in zip(poses, marker_colors):
                         prob = np.exp(pos[2] - 1)
                         pos = pos[:2].astype(np.int)
@@ -208,7 +233,26 @@ def task_evaluate_realtime(configs):
 
                     dst_vid.write(frame.astype(np.uint8))
 
-        dlc_live.close()
+
+@program_task(9, configurations.main.test_system)
+def task_evaluate_fps(configs):
+    export_dir = get_export_dir(configs.realtime_config.model_config.name)
+
+    for vid_name in configs.videos:
+        src_vid_name = f'{general_configs.videos_dir}/{vid_name}.avi'
+
+        with VideoManager(cv2.VideoCapture(src_vid_name), f'{src_vid_name} has problems.') as src_vid:
+            orig_frame_size = (int(src_vid.get(cv2.CAP_PROP_FRAME_WIDTH)), int(src_vid.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+
+            crop_offset, crop_size, frame_size = infer_edit_frame_params(
+                configs.realtime_config.model_config.frame_config.crop_offset,
+                configs.realtime_config.model_config.frame_config.crop_size,
+                configs.realtime_config.model_config.frame_config.frame_size,
+                orig_frame_size)
+
+            for _ in get_dlc_preds(export_dir, src_vid, crop_offset, crop_size, frame_size,
+                                   configs.realtime_config.model_config.frame_config.frame_is_colored):
+                pass
 
 
 prompt = ''.join([f'{task_num}: {program_task.tasks[task_num].__name__.split("_", 1)[1].replace("_", " ")}\n'
