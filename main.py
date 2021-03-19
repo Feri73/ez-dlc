@@ -1,25 +1,22 @@
-import glob
-import shutil
 import distutils.dir_util
+import glob
+import os
+import shutil
 
 import cv2
-from PIL import Image
-import numpy as np
+import deeplabcut
 import matplotlib.cm as cm
+import numpy as np
 import pandas as pd
-from dlclive import Processor, DLCLive
+from PIL import Image
+from dlclive import DLCLive
 from tqdm import tqdm
 
-import general_configs
 import configurations.main.dlc
 import configurations.main.edit_videos
-import configurations.main.test_system
 import configurations.main.label_frames
-
-import os
-
-import deeplabcut
-
+import configurations.main.test_system
+import general_configs
 from utils import edit_video, create_dlc_project, edit_frame, VideoManager, infer_edit_frame_params
 
 
@@ -33,7 +30,7 @@ def get_export_dir(model_name):
         shutil.rmtree(exports_dir)
 
     deeplabcut.export_model(get_dlc_config_path(model_name))
-    export_dir = glob.glob(os.path.abspath(f'{exports_dir}/*/'))[0]
+    export_dir = glob.glob(os.path.abspath(f'{exports_dir}') + '/*/')[0]
 
     return export_dir
 
@@ -41,14 +38,13 @@ def get_export_dir(model_name):
 def get_dlc_preds(export_dir, src_vid, crop_offset, crop_size, frame_size, frame_is_colored):
     use_dlc_preprocess = abs(crop_size[0] / frame_size[0] * frame_size[1] - crop_size[1]) < 5
 
-    dlc_proc = Processor()
     if use_dlc_preprocess:
-        dlc_live = DLCLive(export_dir, processor=dlc_proc,
+        dlc_live = DLCLive(export_dir,
                            cropping=[crop_offset[0], crop_offset[0] + crop_size[0],
                                      crop_offset[1], crop_offset[1] + crop_size[1]],
                            resize=frame_size[0] / crop_size[0])
     else:
-        dlc_live = DLCLive(export_dir, processor=dlc_proc)
+        dlc_live = DLCLive(export_dir)
 
     dlc_live.init_inference(src_vid.read()[1])
 
