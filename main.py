@@ -111,7 +111,7 @@ def task_label_frames(configs):
         cfg_path = os.path.abspath('.tmp/tmp/config.yaml')
 
         tmp_dir = os.path.abspath(f'.tmp/tmp/labeled-data/{vid_name}')
-        dst_dir = os.path.abspath(f'{general_configs.videos_dir}/labels/{vid_name}')
+        dst_dir = os.path.abspath(f'{general_configs.videos_dir}/{general_configs.labels_dir}/{vid_name}')
 
         deeplabcut.extract_frames(cfg_path, mode=configs.mode, algo='kmeans', crop=False)
 
@@ -141,7 +141,7 @@ def task_create_dlc_model(configs):
 
     for d_name in configs.model_config.data:
         d_path = f'{general_configs.models_dir}/{configs.model_config.name}/labeled-data/{d_name}'
-        shutil.copytree(f'{general_configs.videos_dir}/labels/{d_name}', d_path)
+        shutil.copytree(f'{general_configs.videos_dir}/{general_configs.labels_dir}/{d_name}', d_path)
         for img_path in glob.glob(f'{d_path}/img*.png'):
             img = np.array(Image.open(img_path))
             orig_size = img.shape[1::-1]
@@ -188,7 +188,12 @@ def task_evaluate_dlc(configs):
     deeplabcut.evaluate_network(get_dlc_config_path(configs.model_config.name), plotting=True)
 
 
-@program_task(8, configurations.main.test_system)
+@program_task(8, configurations.main.dlc)
+def task_export_model(configs):
+    get_export_dir(configs.model_config.name)
+
+
+@program_task(9, configurations.main.test_system)
 def task_evaluate_accuracy(configs):
     export_dir = get_export_dir(configs.realtime_config.model_config.name)
 
@@ -230,7 +235,7 @@ def task_evaluate_accuracy(configs):
                     dst_vid.write(frame.astype(np.uint8))
 
 
-@program_task(9, configurations.main.test_system)
+@program_task(10, configurations.main.test_system)
 def task_evaluate_fps(configs):
     export_dir = get_export_dir(configs.realtime_config.model_config.name)
 
