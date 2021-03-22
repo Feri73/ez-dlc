@@ -106,8 +106,8 @@ def task_label_frames(configs):
         vid_name = f'{vid}_{configs.marker_config.name}'
         video_path = f'{general_configs.videos_dir}/{vid_name}.avi'
         shutil.copy(f'{general_configs.videos_dir}/{vid}.avi', video_path)
-        create_dlc_project('tmp', '.tmp', [video_path], configs.marker_config.markers, prompt_delete=False,
-                           numframes2pick=configs.training_data_frame_count)
+        create_dlc_project('tmp', configs.experimenter, '.tmp', [video_path], configs.marker_config.markers,
+                           prompt_delete=False, numframes2pick=configs.training_data_frame_count)
         cfg_path = os.path.abspath('.tmp/tmp/config.yaml')
 
         tmp_dir = os.path.abspath(f'.tmp/tmp/labeled-data/{vid_name}')
@@ -126,45 +126,45 @@ def task_label_frames(configs):
 
 @program_task(3, configurations.main.dlc)
 def task_create_dlc_model(configs):
-    def set_video(line):
-        if '.tmp/tmp.avi' in line:
-            return ''
-        if 'crop: ' in line:
-            ref_name = os.path.abspath('.tmp/tmp.avi')
-            return ''.join([f'  {ref_name.replace("tmp.avi", d)}.avi:\n    crop: 0, 1000, 0, 1000\n'
-                            for d in configs.model_config.data])
-
-    create_dlc_project(configs.model_config.name, general_configs.models_dir, ['.tmp/tmp.avi'],
-                       configs.model_config.marker_config.markers, custom_config=set_video,
+    create_dlc_project(configs.model_config.name, configs.model_config.experimenter,
+                       general_configs.models_dir, ['.tmp/tmp.avi'], configs.model_config.marker_config.markers,
                        default_net_type=configs.model_config.network_type)
     shutil.rmtree(f'{general_configs.models_dir}/{configs.model_config.name}/labeled-data/tmp')
 
-    for d_name in configs.model_config.data:
-        d_path = f'{general_configs.models_dir}/{configs.model_config.name}/labeled-data/{d_name}'
-        shutil.copytree(f'{general_configs.videos_dir}/{general_configs.labels_dir}/{d_name}', d_path)
-        for img_path in glob.glob(f'{d_path}/img*.png'):
-            img = np.array(Image.open(img_path))
-            orig_size = img.shape[1::-1]
-            img = edit_frame(img,
-                             configs.model_config.frame_config.crop_offset,
-                             configs.model_config.frame_config.crop_size,
-                             configs.model_config.frame_config.frame_size,
-                             True)
-            Image.fromarray(img).save(img_path)
+    for entry in configs.model_config.data:
+        labels_path = f'{general_configs.videos_dir}/{general_configs.labels_dir}'
+        if entry.endswith('/'):
+            d_names = next(os.walk(f'{labels_path}/{entry}'))[1]
+            labels_path = f'{labels_path}/{entry}'
+        else:
+            d_names = [entry]
+        for d_name in d_names:
+            d_path = f'{general_configs.models_dir}/{configs.model_config.name}/labeled-data/{d_name}'
+            shutil.copytree(f'{labels_path}/{d_name}', d_path)
+            for img_path in glob.glob(f'{d_path}/img*.png'):
+                img = np.array(Image.open(img_path))
+                orig_size = img.shape[1::-1]
+                img = edit_frame(img,
+                                 configs.model_config.frame_config.crop_offset,
+                                 configs.model_config.frame_config.crop_size,
+                                 configs.model_config.frame_config.frame_size,
+                                 True)
+                Image.fromarray(img).save(img_path)
 
-        crop_offset, crop_size, frame_size = infer_edit_frame_params(configs.model_config.frame_config.crop_offset,
-                                                                     configs.model_config.frame_config.crop_size,
-                                                                     configs.model_config.frame_config.frame_size,
-                                                                     orig_size)
+            crop_offset, crop_size, frame_size = infer_edit_frame_params(configs.model_config.frame_config.crop_offset,
+                                                                         configs.model_config.frame_config.crop_size,
+                                                                         configs.model_config.frame_config.frame_size,
+                                                                         orig_size)
 
-        dframe = pd.read_hdf(f'{d_path}/CollectedData_faraz.h5')
-        for k in dframe.keys():
-            if k[-1] == 'x':
-                dframe[k] = (dframe[k] - crop_offset[0]) * frame_size[0] / crop_size[0]
-            if k[-1] == 'y':
-                dframe[k] = (dframe[k] - crop_offset[1]) * frame_size[1] / crop_size[1]
-        dframe.to_csv(f'{d_path}/CollectedData_faraz.csv')
-        dframe.to_hdf(f'{d_path}/CollectedData_faraz.h5', 'df_with_missing', format='table', mode='w')
+            dframe = pd.read_hdf(f'{d_path}/CollectedData_{configs.model_config.experimenter}.h5')
+            for k in dframe.keys():
+                if k[-1] == 'x':
+                    dframe[k] = (dframe[k] - crop_offset[0]) * frame_size[0] / crop_size[0]
+                if k[-1] == 'y':
+                    dframe[k] = (dframe[k] - crop_offset[1]) * frame_size[1] / crop_size[1]
+            dframe.to_csv(f'{d_path}/CollectedData_{configs.model_config.experimenter}.csv')
+            dframe.to_hdf(f'{d_path}/CollectedData_{configs.model_config.experimenter}.h5',
+                          'df_with_missing', format='table', mode='w')
 
 
 @program_task(4, configurations.main.dlc)

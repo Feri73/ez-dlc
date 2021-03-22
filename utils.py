@@ -86,7 +86,7 @@ def edit_frame(frame: np.ndarray, crop_offset: Tuple[int, int], crop_size: Tuple
     return frame
 
 
-def create_dlc_project(name: str, dir: str, videos: List[str], markers: List[str],
+def create_dlc_project(name: str, experimenter: str, dir: str, videos: List[str], markers: List[str],
                        custom_config: Callable[[str], Optional[str]] = None, prompt_delete: bool = True, **conf):
     videos = [os.path.abspath(vid) for vid in videos]
     custom_config = custom_config or (lambda _: None)
@@ -94,13 +94,13 @@ def create_dlc_project(name: str, dir: str, videos: List[str], markers: List[str
     config_path = os.path.abspath(f'{dir}/{name}/config.yaml')
 
     model_path = os.path.abspath(f'{dir}/{name}')
-    orig_model_path = os.path.abspath(f'{dir}/{name}' f'-faraz-{datetime.today().strftime("%Y-%m-%d")}')
+    orig_model_path = os.path.abspath(f'{dir}/{name}' f'-{experimenter}-{datetime.today().strftime("%Y-%m-%d")}')
 
     if os.path.isdir(model_path) and (not prompt_delete or
                                       input(f'delete existing "{model_path}"? ').startswith('y')):
         shutil.rmtree(model_path)
 
-    deeplabcut.create_new_project(name, 'faraz', videos, working_directory=dir,
+    deeplabcut.create_new_project(name, experimenter, videos, working_directory=dir,
                                   copy_videos=False, multianimal=False)
     os.rename(orig_model_path, model_path)
 
