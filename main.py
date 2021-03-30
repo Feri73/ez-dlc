@@ -91,13 +91,16 @@ def task_edit_video(configs):
         video_path = f'{general_configs.videos_dir}/{vid}.avi'
         edited_video_path = f'{general_configs.videos_dir}/{vid}_{configs.video_config.name}_' \
                             f'{configs.frame_config.name}.avi'
-        edit_video(video_path, edited_video_path,
-                   configs.frame_config.crop_offset,
-                   configs.frame_config.crop_size,
-                   configs.frame_config.frame_size,
-                   configs.frame_config.frame_is_colored,
-                   configs.video_config.fps,
-                   configs.video_config.time_window)
+        try:
+            edit_video(video_path, edited_video_path,
+                       configs.frame_config.crop_offset,
+                       configs.frame_config.crop_size,
+                       configs.frame_config.frame_size,
+                       configs.frame_config.frame_is_colored,
+                       configs.video_config.fps,
+                       configs.video_config.time_window)
+        except Exception:
+            print(f'error in {video_path}')
 
 
 @program_task(2, configurations.main.label_frames)
