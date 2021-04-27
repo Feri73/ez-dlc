@@ -87,20 +87,17 @@ program_task = make_program()
 
 @program_task(1, configurations.main.edit_videos)
 def task_edit_video(configs):
-    for vid in configs.videos:
-        video_path = f'{general_configs.videos_dir}/{vid}.avi'
-        edited_video_path = f'{general_configs.videos_dir}/{vid}_{configs.video_config.name}_' \
+    for vids in configs.videos:
+        video_paths = [f'{general_configs.videos_dir}/{vid}.avi' for vid in vids]
+        edited_video_path = f'{general_configs.videos_dir}/{vids[0]}_{configs.video_config.name}_' \
                             f'{configs.frame_config.name}.avi'
-        try:
-            edit_video(video_path, edited_video_path,
-                       configs.frame_config.crop_offset,
-                       configs.frame_config.crop_size,
-                       configs.frame_config.frame_size,
-                       configs.frame_config.frame_is_colored,
-                       configs.video_config.fps,
-                       configs.video_config.time_window)
-        except Exception:
-            print(f'error in {video_path}')
+        edit_video(video_paths, edited_video_path,
+                   configs.frame_config.crop_offset,
+                   configs.frame_config.crop_size,
+                   configs.frame_config.frame_size,
+                   configs.frame_config.frame_is_colored,
+                   configs.video_config.fps,
+                   configs.video_config.time_window)
 
 
 @program_task(2, configurations.main.label_frames)
@@ -225,7 +222,7 @@ def task_evaluate_accuracy(configs):
                 for frame, poses in get_dlc_preds(export_dir, src_vid, crop_offset, crop_size, frame_size,
                                                   configs.realtime_config.model_config.frame_config.frame_is_colored):
                     for pos, color in zip(poses, marker_colors):
-                        prob = np.exp(pos[2] - 1)
+                        prob = pos[2] if pos[2] >= configs.dot_threshold else 0.
                         pos = pos[:2].astype(np.int)
 
                         size = configs.dot_size
