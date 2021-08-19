@@ -55,8 +55,6 @@ def edit_video(src_vid_paths: List[str], dst_vid_path: str, crop_offset: Tuple[i
 
         fps = fps or orig_fps
 
-        frame_step = orig_fps / fps
-
     with VideoManager(
             cv2.VideoWriter(dst_vid_path, cv2.VideoWriter_fourcc(*'FMP4'), fps, output_frame_size, frame_is_colored),
             f'Cannot create {dst_vid_path}') as dst_vid:
@@ -64,10 +62,13 @@ def edit_video(src_vid_paths: List[str], dst_vid_path: str, crop_offset: Tuple[i
             try:
                 with VideoManager(cv2.VideoCapture(src_vid_path), f'{src_vid_path} has problems.') as src_vid:
                     tw = time_window or (0, int(src_vid.get(cv2.CAP_PROP_FRAME_COUNT)))
-                    for t in tqdm(np.arange(tw[0] * orig_fps, tw[1] * orig_fps, frame_step), desc=src_vid_path):
-                        int_t = int(t)
-                        src_vid.set(cv2.CAP_PROP_POS_FRAMES, int_t)
+                    cur_src_pos = 0
+                    for t in tqdm(range(tw[0] * fps, tw[1] * fps), desc=src_vid_path):
+                        int_t = int(t / fps * orig_fps)
+                        if cur_src_pos != int_t:
+                            src_vid.set(cv2.CAP_PROP_POS_FRAMES, int_t)
                         _, frame = src_vid.read()
+                        cur_src_pos += 1
                         frame = edit_frame(frame, crop_offset, crop_size, frame_size, frame_is_colored, rotate_90)
                         dst_vid.write(frame.astype(np.uint8))
             except Exception:
