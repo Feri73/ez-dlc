@@ -10,7 +10,7 @@ import matplotlib.cm as cm
 import numpy as np
 import pandas as pd
 from PIL import Image
-from dlclive import DLCLive
+# from dlclive import DLCLive
 from tqdm import tqdm
 
 import configurations.main.dlc
@@ -36,7 +36,7 @@ def get_export_dir(model_name):
     return export_dir
 
 
-def get_dlc_preds(model_name, src_vid, crop_offset, crop_size, frame_size, frame_is_colored, use_live):
+def get_dlc_preds(model_name, src_vid, crop_offset, crop_size, frame_size, frame_is_colored, rotate_90, use_live):
     export_dir = get_export_dir(model_name)
     if use_live:
         use_dlc_preprocess = abs(crop_size[0] / frame_size[0] * frame_size[1] - crop_size[1]) < 5
@@ -59,7 +59,7 @@ def get_dlc_preds(model_name, src_vid, crop_offset, crop_size, frame_size, frame
             if use_dlc_preprocess:
                 poses = dlc_live.get_pose(frame.astype(np.uint8))
             else:
-                processed_frame = edit_frame(frame, crop_offset, crop_size, frame_size, frame_is_colored)
+                processed_frame = edit_frame(frame, crop_offset, crop_size, frame_size, frame_is_colored, rotate_90)
                 poses = dlc_live.get_pose(processed_frame.astype(np.uint8))
                 poses[:, 0] = poses[:, 0] * crop_size[0] / frame_size[0] + crop_offset[0]
                 poses[:, 1] = poses[:, 1] * crop_size[1] / frame_size[1] + crop_offset[1]
@@ -114,6 +114,7 @@ def task_edit_video(configs):
                    configs.frame_config.crop_size,
                    configs.frame_config.frame_size,
                    configs.frame_config.frame_is_colored,
+                   configs.frame_config.rotate_90,
                    configs.video_config.fps,
                    configs.video_config.time_window)
 
@@ -160,6 +161,8 @@ def task_create_dlc_model(configs):
                        default_net_type=configs.model_config.network_type)
     shutil.rmtree(f'{general_configs.models_dir}/{configs.model_config.name}/labeled-data/tmp')
 
+    assert configs.model_config.frame_config.rotate_90 == 0
+
     for entry in configs.model_config.data:
         labels_path = f'{general_configs.videos_dir}/{general_configs.labels_dir}'
         if entry.endswith('/'):
@@ -177,7 +180,7 @@ def task_create_dlc_model(configs):
                                  configs.model_config.frame_config.crop_offset,
                                  configs.model_config.frame_config.crop_size,
                                  configs.model_config.frame_config.frame_size,
-                                 True)
+                                 True, configs.model_config.frame_config.rotate_90)
                 Image.fromarray(img).save(img_path)
 
             crop_offset, crop_size, frame_size = infer_edit_frame_params(configs.model_config.frame_config.crop_offset,
@@ -228,6 +231,8 @@ def task_evaluate_accuracy(configs):
     markers = configs.realtime_config.model_config.marker_config.markers
     marker_colors = [np.array(cmap(i / len(markers))[:3]) * 255 for i in range(len(markers))]
 
+    assert configs.realtime_config.model_config.frame_config.rotate_90 == 0
+
     for vid_name in configs.videos:
         src_vid_name = f'{general_configs.videos_dir}/{vid_name}.avi'
         dst_vid_name = f'{general_configs.videos_dir}/{vid_name}_' \
@@ -249,7 +254,7 @@ def task_evaluate_accuracy(configs):
                 for frame, poses in get_dlc_preds(configs.realtime_config.model_config.name, src_vid,
                                                   crop_offset, crop_size, frame_size,
                                                   configs.realtime_config.model_config.frame_config.frame_is_colored,
-                                                  True):
+                                                  configs.realtime_config.model_config.frame_config.rotate_90, True):
                     for pos, color in zip(poses, marker_colors):
                         prob = pos[2] if pos[2] >= configs.dot_threshold else 0.
                         pos = pos[:2].astype(np.int)
@@ -266,6 +271,9 @@ def task_evaluate_accuracy(configs):
 
 @program_task(10, configurations.main.test_system)
 def task_evaluate_fps(configs):
+
+    assert configs.realtime_config.model_config.frame_config.rotate_90 == 0
+
     for vid_name in configs.videos:
         src_vid_name = f'{general_configs.videos_dir}/{vid_name}.avi'
 
@@ -280,7 +288,7 @@ def task_evaluate_fps(configs):
 
             for _ in get_dlc_preds(configs.realtime_config.model_config.name, src_vid, crop_offset, crop_size,
                                    frame_size, configs.realtime_config.model_config.frame_config.frame_is_colored,
-                                   True):
+                                   configs.realtime_config.model_config.frame_config.rotate_90, True):
                 pass
 
 
