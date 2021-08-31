@@ -10,7 +10,7 @@ import matplotlib.cm as cm
 import numpy as np
 import pandas as pd
 from PIL import Image
-# from dlclive import DLCLive
+from dlclive import DLCLive
 from tqdm import tqdm
 
 import configurations.main.dlc
