@@ -3,14 +3,18 @@ import glob
 import os
 import shutil
 from pathlib import Path
+from warnings import warn
 
 import cv2
-import deeplabcut
 import matplotlib.cm as cm
 import numpy as np
 import pandas as pd
 from PIL import Image
-from dlclive import DLCLive
+try:
+    import deeplabcut
+    from dlclive import DLCLive
+except:
+    warn('Deeplabcut not found. Cannot using deeplabct-related functions')
 from tqdm import tqdm
 
 import configurations.main.dlc
